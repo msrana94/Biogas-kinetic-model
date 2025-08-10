@@ -1,0 +1,107 @@
+% Clear workspace and command window
+clear;
+clc;
+
+% Define time points (days 0 to 30)
+time = 0:30;
+
+% Extract data for each test group from the provided image (mL g^-1 VS)
+% Pad with NaN to ensure all rows have 31 elements
+data = [
+    0.00, 28.74, 58.70, 106.10, 125.75, 142.94, 155.71, 161.31, 171.58, 173.39, 179.04, 182.68, 188.18, 190.00, 190.73, 192.30, 193.14, 193.88, 194.42, 196.82, 198.84, 198.84, 201.54, 201.93, 202.37, 202.37, 202.37, 202.87, 203.26, 203.46, 203.46; % A
+    0.00, 25.28, 55.52, 93.30, 117.31, 136.86, 150.85, 152.39, 162.90, 163.80, 170.26, 173.83, 177.75, 179.56, 180.73, 182.31, 183.21, 183.89, 184.61, 187.64, 189.58, 189.58, 191.84, 192.78, 193.42, 193.46, 193.87, 193.96, 193.96, 193.96, 193.96; % B
+    0.00, 34.72, 69.44, 115.03, 133.32, 148.67, 157.41, 159.01, 169.93, 174.65, 178.19, 181.22, 184.15, 186.04, 187.41, 190.10, 191.99, 192.70, 193.45, 195.53, 197.23, 199.83, 202.19, 203.00, 203.61, 203.85, 204.27, 204.56, 204.56, 204.98, 204.98; % C
+    0.00, 38.82, 84.14, 138.39, 162.02, 179.13, 191.19, 194.56, 209.51, 212.89, 218.92, 223.01, 226.20, 227.88, 229.72, 231.79, 232.75, 233.48, 234.73, 236.61, 238.83, 241.48, 244.13, 244.95, 245.53, 245.82, 246.74, 247.46, 247.46, 247.46, 247.46; % D
+    0.00, 49.63, 115.16, 171.64, 191.30, 203.67, 215.41, 220.40, 232.62, 237.17, 242.30, 247.00, 249.93, 254.19, 255.95, 258.54, 261.72, 262.69, 263.72, 267.58, 268.61, 271.79, 273.75, 275.16, 275.26, 275.56, 276.09, 276.58, 276.58, 276.58, 276.58; % E
+    0.00, 54.90, 126.10, 184.01, 203.82, 220.86, 235.91, 240.77, 256.21, 266.49, 274.51, 279.63, 286.35, 291.56, 295.17, 301.19, 307.96, 311.72, 314.02, 320.99, 328.56, 331.07, 334.33, 337.49, 338.54, 339.19, 340.19, 341.00, 341.80, 341.80, 341.80; % F
+    0.00, 38.17, 92.67, 141.39, 156.21, 163.89, 171.83, 181.78, 189.06, 191.37, 191.92, 195.94, 200.11, 202.72, 205.43, 208.55, 210.41, 212.62, 214.52, 215.73, 217.19, 218.84, 220.35, 221.20, 221.81, 222.31, 223.01, 223.57, 224.07, 224.57, 225.07 % G
+];
+
+% Number of test groups
+numGroups = 7;
+
+% Initial parameter guesses for the logistic function model
+% [Y_0, R_m, lambda]
+initialParams = [300, 10, 5]; % Reasonable initial guesses (Y_0 = 300 mL g^-1 VS, R_m = 10 mL g^-1 VS day^-1, lambda = 5 days)
+
+% Preallocate arrays for results
+Y_0 = zeros(numGroups, 1);
+R_m = zeros(numGroups, 1);
+lambda = zeros(numGroups, 1);
+R2 = zeros(numGroups, 1);
+RMSE = zeros(numGroups, 1);
+AIC = zeros(numGroups, 1);
+fittedData = zeros(length(time), numGroups); % 31x7 matrix (time x groups)
+
+% Specified logistic function model
+logisticModel = @(params, t) params(1) ./ (1 + exp((4 * params(2) / params(1)) * (params(3) - t) + 2));
+
+% Fit the model and calculate metrics for each group
+for i = 1:numGroups
+    % Extract data for the current group
+    yData = data(i, :);
+    
+    % Remove initial zero values and NaN for better fitting
+    nonZeroIdx = find(~isnan(yData) & yData > 0, 1):length(time);
+    tData = time(nonZeroIdx);
+    yData = yData(nonZeroIdx);
+    
+    % Define bounds for parameters
+    lb = [0, 0, -Inf];  % Lower bounds: Y_0, R_m >= 0; lambda can be negative
+    ub = [Inf, Inf, Inf];  % Upper bounds: no strict upper limit
+    
+    % Fit the model using lsqcurvefit
+    options = optimoptions('lsqcurvefit', 'Display', 'off');
+    params = lsqcurvefit(logisticModel, initialParams, tData, yData, lb, ub, options);
+    
+    % Store fitted parameters
+    Y_0(i) = params(1);
+    R_m(i) = params(2);
+    lambda(i) = params(3);
+    
+    % Generate fitted values for the full time range
+    fittedData(:, i) = logisticModel(params, time);
+    
+    % Calculate residuals
+    residuals = yData - logisticModel(params, tData);
+    
+    % Calculate R^2
+    SS_tot = sum((yData - mean(yData)).^2);
+    SS_res = sum(residuals.^2);
+    R2(i) = 1 - SS_res / SS_tot;
+    
+    % Calculate RMSE
+    RMSE(i) = sqrt(mean(residuals.^2));
+    
+    % Calculate AIC
+    n = length(yData);  % Number of data points
+    k_params = 3;  % Number of parameters (Y_0, R_m, lambda)
+    AIC(i) = 2 * k_params + n * log(SS_res / n) + (2 * k_params * (k_params + 1)) / (n - k_params - 1);  % AIC with correction for small sample size
+end
+
+% Display results
+for i = 1:numGroups
+    fprintf('Group %s:\n', char('A' + i - 1));
+    fprintf('  Y_0 = %.2f mL g^-1 VS\n', Y_0(i));
+    fprintf('  R_m = %.2f mL g^-1 VS day^-1\n', R_m(i));
+    fprintf('  lambda = %.2f days\n', lambda(i));
+    fprintf('  R^2 = %.4f\n', R2(i));
+    fprintf('  RMSE = %.4f\n', RMSE(i));
+    fprintf('  AIC = %.2f\n', AIC(i));
+    fprintf('\n');
+end
+
+% Prepare data for export to Excel
+% Ensure exportData is a cell array with proper dimensions
+exportData = num2cell([time; fittedData']'); % 31x8 matrix (time points x groups)
+exportData = [{'Time (days)', 'Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F', 'Group G'}; exportData];
+
+% Export fitted data to Excel
+xlswrite('fitted_biomethane_data_logistic_custom.xlsx', exportData);
+fprintf('Fitted data exported to fitted_biomethane_data_logistic_custom.xlsx\n');
+
+% Export statistics to Excel
+headersStats = {'Group', 'Y_0 (mL g^-1 VS)', 'R_m (mL g^-1 VS day^-1)', 'lambda (days)', 'R^2', 'RMSE', 'AIC'};
+statsTable = num2cell([(65:71)', Y_0, R_m, lambda, R2, RMSE, AIC]); % 65:71 corresponds to ASCII 'A' to 'G'
+xlswrite('biomethane_model_stats_logistic_custom.xlsx', [headersStats; statsTable]);
+fprintf('Model statistics exported to biomethane_model_stats_logistic_custom.xlsx\n');

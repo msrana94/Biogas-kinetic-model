@@ -1,0 +1,238 @@
+% Define the data
+test_groups = {'100:0', '90:10', '70:30', '50:50', '30:70', '10:90', '0:100'};
+levels = {'100%', '95%', '90%'};
+
+% Data (labeled as Cumulative Biomethane Production, mL g^-1 VS)
+data = [
+    203.46, 193.2823, 183.1095;  % 100:0
+    193.96, 184.2592, 174.5613;  % 90:10
+    204.98, 194.7317, 184.4827;  % 70:30
+    247.46, 235.0882, 222.7151;  % 50:50
+    276.58, 262.7535, 248.9243;  % 30:70
+    341.80, 324.7094, 307.6194;  % 10:90
+    225.07, 213.8187, 202.5651   % 0:100
+];
+
+% Time (days)
+time = [
+    30, 17, 11;  % 100:0
+    30, 18, 11;  % 90:10
+    30, 19, 12;  % 70:30
+    30, 19, 11;  % 50:50
+    30, 17, 12;  % 30:70
+    30, 20, 16;  % 10:90
+    30, 18, 13   % 0:100
+];
+
+% Flatten the data for easier handling
+num_groups = 7;
+num_levels = 3;
+group_labels = repmat(test_groups', num_levels, 1);
+level_labels = repmat(levels, num_groups, 1);
+group_labels = group_labels(:);
+level_labels = level_labels(:);
+data_flat = data(:);
+time_flat = time(:);
+
+% Calculate the weighted score
+min_hrt = 10;  % Minimum HRT for weighting
+weighted_score = data_flat .* (min_hrt ./ time_flat);
+
+% Apply the threshold approach to find the best case
+threshold = 300;  % Threshold remains 300
+valid_indices = data_flat >= threshold;
+valid_time = time_flat(valid_indices);
+valid_data = data_flat(valid_indices);
+valid_weighted_score = weighted_score(valid_indices);
+valid_group_labels = group_labels(valid_indices);
+valid_level_labels = level_labels(valid_indices);
+
+% Find the best case (lowest time among those meeting the threshold)
+[best_time, best_idx] = min(valid_time);
+best_data = valid_data(best_idx);
+best_weighted_score = valid_weighted_score(best_idx);
+best_group = valid_group_labels{best_idx};
+best_level = valid_level_labels{best_idx};
+
+% Display the best case
+disp('Best Case (Threshold >= 300 mL g^-1 VS, Minimize Time):');
+fprintf('Test Group: %s\n', best_group);
+fprintf('Level: %s\n', best_level);
+fprintf('Time: %d days\n', best_time);
+fprintf('Cumulative Biomethane Production: %.2f mL g^-1 VS\n', best_data);
+fprintf('Weighted Score: %.2f\n', best_weighted_score);
+
+% --- Scatter Plot with Curves ---
+figure;
+hold on;
+
+% Define colors for each group (for curves)
+group_colors = lines(num_groups);
+
+% Define markers for each level
+level_markers = {'o', 's', 'd'};  % Circle for 100%, Square for 95%, Diamond for 90%
+
+% Plot curves and points for each group
+for g = 1:num_groups
+    % Get data for the current group
+    idx = (g-1)*num_levels + 1 : g*num_levels;
+    time_group = time(g, :);
+    data_group = data(g, :);
+    weighted_score_group = weighted_score(idx);
+    
+    % Sort data by time for proper curve plotting
+    [time_sorted, sort_idx] = sort(time_group);
+    data_sorted = data_group(sort_idx);
+    weighted_score_sorted = weighted_score_group(sort_idx);
+    level_sorted = level_labels(idx(sort_idx));
+    
+    % Plot the curve (line connecting points)
+    plot(time_sorted, data_sorted, 'Color', group_colors(g, :), 'LineStyle', '-', ...
+        'LineWidth', 1.5, 'HandleVisibility', 'off');
+    
+    % Plot points with color gradient based on weighted score
+    for l = 1:num_levels
+        marker = level_markers{l};
+        scatter(time_sorted(l), data_sorted(l), 150, weighted_score_sorted(l), marker, ...
+            'filled', 'MarkerEdgeColor', 'k', 'DisplayName', sprintf('Group %s (%s)', test_groups{g}, level_sorted{l}));
+    end
+end
+
+% Add color bar for weighted score
+colormap(parula);
+colorbar;
+caxis([min(weighted_score), max(weighted_score)]);
+cb = colorbar;
+cb.Label.String = 'Weighted score';
+cb.Label.FontName = 'Times New Roman';
+cb.Label.FontSize = 10;
+cb.Label.FontWeight = 'bold';
+% Apply font to color bar tick labels
+cb.FontName = 'Times New Roman';
+cb.FontSize = 10;
+cb.FontWeight = 'bold';
+
+% Highlight the best time
+scatter(best_time, best_data, 200, 'r', 'p', 'filled', 'MarkerEdgeColor', 'k', ...
+    'DisplayName', sprintf('Best time: %d days (Group %s, %s)', best_time, best_group, best_level));
+
+% Add labels just above or below the markers with minimal gap and adjustments to avoid overlap
+for i = 1:length(time_flat)
+    % Default: place label just above the marker with minimal gap
+    x_offset = 0;  % Center horizontally
+    y_offset = 10;  % Very small vertical offset above the marker (minimal gap)
+    position = 'above';  % Default position
+    
+    % Adjust for specific points to avoid overlap by placing some labels below
+    if strcmp(group_labels{i}, '100:0') && strcmp(level_labels{i}, '100%')
+        % "100:0 100%" below (203.46 mL g^-1 VS)
+        y_offset = -10;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '90:10') && strcmp(level_labels{i}, '100%')
+        % "90:10 100%" below (193.96 mL g^-1 VS)
+        y_offset = -20;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '70:30') && strcmp(level_labels{i}, '100%')
+        % "70:30 100%" below (204.98 mL g^-1 VS)
+        y_offset = -30;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '50:50') && strcmp(level_labels{i}, '100%')
+        % "50:50 100%" above (247.46 mL g^-1 VS)
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '30:70') && strcmp(level_labels{i}, '100%')
+        % "30:70 100%" above (276.58 mL g^-1 VS)
+        y_offset = 20;
+    elseif strcmp(group_labels{i}, '10:90') && strcmp(level_labels{i}, '100%')
+        % "10:90 100%" above (341.80 mL g^-1 VS), ensure visibility
+        y_offset = 30;
+    elseif strcmp(group_labels{i}, '0:100') && strcmp(level_labels{i}, '100%')
+        % "0:100 100%" below (225.07 mL g^-1 VS)
+        y_offset = -40;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '100:0') && strcmp(level_labels{i}, '90%')
+        % "100:0 90%" above at Time = 11
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '90:10') && strcmp(level_labels{i}, '90%')
+        % "90:10 90%" below at Time = 11
+        y_offset = -10;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '50:50') && strcmp(level_labels{i}, '90%')
+        % "50:50 90%" above at Time = 11
+        y_offset = 20;
+    elseif strcmp(group_labels{i}, '70:30') && strcmp(level_labels{i}, '90%')
+        % "70:30 90%" above at Time = 12
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '30:70') && strcmp(level_labels{i}, '90%')
+        % "30:70 90%" below at Time = 12
+        y_offset = -10;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '100:0') && strcmp(level_labels{i}, '95%')
+        % "100:0 95%" below at Time = 17
+        y_offset = -10;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '30:70') && strcmp(level_labels{i}, '95%')
+        % "30:70 95%" above at Time = 17
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '90:10') && strcmp(level_labels{i}, '95%')
+        % "90:10 95%" below at Time = 18
+        y_offset = -10;
+        position = 'below';
+    elseif strcmp(group_labels{i}, '0:100') && strcmp(level_labels{i}, '95%')
+        % "0:100 95%" above at Time = 18
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '70:30') && strcmp(level_labels{i}, '95%')
+        % "70:30 95%" above at Time = 19
+        y_offset = 10;
+    elseif strcmp(group_labels{i}, '50:50') && strcmp(level_labels{i}, '95%')
+        % "50:50 95%" below at Time = 19
+        y_offset = -10;
+        position = 'below';
+    end
+    
+    % Adjust vertical alignment based on position (above or below)
+    if strcmp(position, 'below')
+        vertical_alignment = 'top';  % Align text so the top of the label is at the marker's position
+    else
+        vertical_alignment = 'bottom';  % Align text so the bottom of the label is at the marker's position
+    end
+    
+    text(time_flat(i) + x_offset, data_flat(i) + y_offset, ...
+        sprintf('%s %s', group_labels{i}, level_labels{i}), ...
+        'FontName', 'Times New Roman', 'FontSize', 10, 'FontWeight', 'bold', ...
+        'HorizontalAlignment', 'center', 'VerticalAlignment', vertical_alignment);
+end
+
+% Customize axes
+ax = gca;
+% X-axis and Y-axis labels
+xlabel('Time (days)', 'FontName', 'Times New Roman', 'FontSize', 10, 'FontWeight', 'bold');
+ylabel('Cumulative biomethane production (mL g^{-1} VS)', ...
+    'FontName', 'Times New Roman', 'FontSize', 10, 'FontWeight', 'bold');
+
+% X-axis ticks with interval of 2
+ax.XLim = [10 30];  % Range from 10 to 30
+ax.XTick = 10:2:30;  % Ticks every 2 days (10, 12, 14, ..., 30)
+ax.YLim = [150 380];  % Extend y-axis to accommodate "10:90 100%" label
+ax.YTick = 150:50:350;
+ax.XTickLabel = ax.XTick;  % Keep labels
+ax.YTickLabel = ax.YTick;
+ax.TickLength = [0 0];  % Set tick length to 0 to hide ticks
+
+% Make tick labels bold and set font
+ax.FontName = 'Times New Roman';
+ax.FontSize = 10;
+ax.FontWeight = 'bold';
+
+% Customize axis lines
+ax.XAxis.LineWidth = 2;
+ax.YAxis.LineWidth = 2;
+ax.XAxis.Color = 'k';  % Black
+ax.YAxis.Color = 'k';  % Black
+
+% Remove grid lines
+grid off;
+
+% Customize legend font
+legend('Location', 'northwest', 'FontName', 'Times New Roman', 'FontSize', 10, 'FontWeight', 'bold');
+
+hold off;
