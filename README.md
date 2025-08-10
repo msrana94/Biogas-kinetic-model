@@ -1,0 +1,1 @@
+This repository contains MATLAB scripts for kinetic modelling and hydraulic retention time optimization of methane production. With this script the experimental data can be fitted to nine widely used kinetic models.
